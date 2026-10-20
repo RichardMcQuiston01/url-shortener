@@ -18,6 +18,7 @@ order, and how each stage is accepted.
 - [Stage 5: Admin UI](#stage-5-admin-ui)
 - [Stage 6: Packaging and CI](#stage-6-packaging-and-ci)
 - [Stage 7: Deploy and Verify](#stage-7-deploy-and-verify)
+- [Stage 8: OpenAPI Spec](#stage-8-openapi-spec)
 - [Open Questions](#open-questions)
 - [Later (Non-Goals)](#later-non-goals)
 
@@ -85,6 +86,7 @@ work.
 | 5     | Admin UI                  | Admin, QA, Reviewer                  | Login, CSRF and add-link tests pass   |
 | 6     | Packaging and CI          | DevOps, Docs                         | CI green, image builds and is healthy |
 | 7     | Deploy and Verify         | Owner, DevOps, Docs                  | Real links redirect on the VPS        |
+| 8     | OpenAPI Spec              | Docs, QA                             | Spec validates and matches the API    |
 
 ## Stage 0: Contracts
 
@@ -226,6 +228,35 @@ secrets; agents never see production secrets.
 
 Exit: real Chrome extension and VS Code Marketplace links redirect correctly
 and show clicks in the admin page.
+
+## Stage 8: OpenAPI Spec
+
+Goal: a machine-readable description of the JSON API that the owner can drop
+into a TypeScript project. Starts only after Stages 1 to 7 are done, so the
+spec describes the API as shipped.
+
+| Task                                                                                              | Agent |
+| ------------------------------------------------------------------------------------------------- | ----- |
+| Write `openapi.json` (OpenAPI 3.1) at the repo root, JSON only, no YAML                           | Docs  |
+| Describe `POST /api/links` (201 created, 200 existing), `GET /api/links`, `GET /api/links/{slug}` | Docs  |
+| Bearer `Authorization` security scheme; `servers` entry driven by the production base URL         | Docs  |
+| Reusable schemas: `Link`, `LinkSummary`, `CreateLinkRequest`, `ErrorBody`                         | Docs  |
+| `ErrorBody.error` enum lists all eight stable codes; each response lists its possible codes       | Docs  |
+| Examples taken from CLAUDE.md (request, 201 body, error body)                                     | Docs  |
+| Contract test: spec paths, status codes and error-code enum match the `httpapi` package           | QA    |
+| Validate the spec with an OpenAPI linter in CI (dev tool only, no Go dependency)                  | QA    |
+| README section: generate TypeScript types with `openapi-typescript` and call the API              | Docs  |
+
+Notes:
+
+- The spec covers `/api/*` only. Public redirects and the admin UI are not part
+  of the client contract.
+- Field names stay `snake_case` to match the JSON the API returns; the spec does
+  not rename them.
+- Schema changes to the API after this stage must update `openapi.json` in the
+  same PR (the contract test enforces this).
+
+Branch: `feature/openapi`.
 
 ## Open Questions
 
