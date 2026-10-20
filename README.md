@@ -1,4 +1,4 @@
-# Project Title
+# URL Shortener Service
 
 - Author: [Richard McQuiston](mailto:richard.mcquiston@gmail.com)
 - Website: https://richardmcquiston.com/
@@ -8,6 +8,10 @@
 | [Overview](#overview) | [Getting Started](#getting-started) | [Buy Me a Coffee](#buy-me-a-coffee) | [License](#license) | [Copyright](#copyright) |
 
 ## Overview
+
+A small, self-hosted URL shortener written in Go with SQLite. It gives short links such as
+`https://go.richardmcquiston.com/hello` that redirect to long URLs (Chrome extension store pages,
+VS Code Marketplace pages, project sites, and so on).
 
 [Back to Top](#table-of-contents)
 
