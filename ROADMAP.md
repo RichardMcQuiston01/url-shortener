@@ -50,9 +50,9 @@ order, and how each stage is accepted.
 
 **Dependencies**
 
-- Allowed: standard library and `modernc.org/sqlite`. A UUID helper is allowed
-  only if one is not written in-house (a small `crypto/rand` v4 function is
-  preferred). Anything else needs owner approval first.
+- Allowed: standard library, `modernc.org/sqlite`, and `github.com/google/uuid`
+  (approved by the owner for UUID v4 ids). Anything else needs owner approval
+  first.
 
 ## Agent Roster
 
@@ -192,16 +192,19 @@ Branches: `feature/admin-auth`, `feature/admin-dashboard`,
 
 Goal: reproducible build and deploy artifacts.
 
-| Task                                                                                           | Agent  |
-| ---------------------------------------------------------------------------------------------- | ------ |
-| Multi-stage `Dockerfile`, `CGO_ENABLED=0`, non-root, minimal image, `HEALTHCHECK`              | DevOps |
-| `docker-compose.yml`: `env_file`, `./data:/data`, `expose: 8080`, external network             | DevOps |
-| GitHub Actions: `gofmt -l` empty, `go vet`, `go test`, Docker build                            | DevOps |
-| Nightly `VACUUM INTO` backup keeping 14, plus restore test                                     | DevOps |
-| `.env.example` (placeholders only), `README.md` (run, deploy, backup, restore), `CHANGELOG.md` | Docs   |
+| Task                                                                                                | Agent  |
+| --------------------------------------------------------------------------------------------------- | ------ |
+| Multi-stage `Dockerfile`, `CGO_ENABLED=0`, non-root, minimal image, `HEALTHCHECK`                   | DevOps |
+| `docker-compose.yml`: `env_file`, `./data:/data`, `expose: 8080`, proxy network via `PROXY_NETWORK` | DevOps |
+| GitHub Actions: `gofmt -l` empty, `go vet`, `go test`, Docker build                                 | DevOps |
+| In-app nightly `VACUUM INTO` backup to `/data/backups`, keep 14, plus restore test                  | Store  |
+| `.env.example` (placeholders only), `README.md` (run, deploy, backup, restore), `CHANGELOG.md`      | Docs   |
 
-Assumption to confirm: the Docker network is `hired-hand-net`. It is set in
-`docker-compose.yml` only.
+The app ships as a single self-contained container. Compose attaches it to one
+shared network so the existing Caddy container can reach it by service name
+(`shortlinks:8080`). The network name comes from `PROXY_NETWORK` in `.env`
+(default `hired-hand-net`, to be confirmed on the VPS with `docker network ls`
+or `docker inspect <caddy container>`). No host port is published.
 
 Branches: `feature/docker`, `feature/ci`, `feature/backup`, `feature/docs`.
 
@@ -214,7 +217,7 @@ secrets; agents never see production secrets.
 | ----------------------------------------------------------------------- | ------------- |
 | Create `.env` on the VPS (`TRUST_PROXY=true`, real `BASE_URL`)          | Owner         |
 | DNS A record for `go.richardmcquiston.com`                              | Owner         |
-| Confirm Docker network name on the server                               | Owner         |
+| Set `PROXY_NETWORK` to the network Caddy uses (`docker network ls`)     | Owner         |
 | PR into `html2lvgl-platform` `dev` adding the Caddy block               | DevOps        |
 | Promote `dev` to `main` (only when the owner asks)                      | Owner         |
 | Smoke test: add link via API, redirect, admin stats, restart keeps data | Owner + QA    |
@@ -225,10 +228,15 @@ and show clicks in the admin page.
 
 ## Open Questions
 
-- Docker network name on the VPS (assumed `hired-hand-net`).
-- UUID: write a small in-house v4 generator (assumed) or approve a library.
-- Session storage: signed stateless cookie (assumed) vs server-side table.
-- Backup scheduling: host cron (assumed) vs a sidecar container.
+Resolved:
+
+- UUIDs: use `github.com/google/uuid`.
+- Sessions: signed stateless cookie.
+- Backups: run inside the app, so there is no cron or sidecar to maintain.
+
+Still to confirm on the VPS:
+
+- The Docker network name Caddy uses (default `hired-hand-net`).
 
 ## Later (Non-Goals)
 
