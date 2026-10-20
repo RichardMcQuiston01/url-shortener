@@ -58,6 +58,7 @@ func run(logger *slog.Logger) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", redirect.HealthHandler(database, logger))
+	redirect.NewHandler(database, appConfig.HomeRedirectURL, logger).Register(mux)
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort("", strconv.Itoa(appConfig.Port)),
