@@ -90,12 +90,12 @@ work.
 
 Goal: let later agents work in parallel without colliding.
 
-| Task                                                                       | Agent        |
-| -------------------------------------------------------------------------- | ------------ |
-| `go mod init`, set current stable Go version, `.gitignore` check           | Orchestrator |
-| Define `links.Validator`, `store.LinkStore`, `store.ClickStore` interfaces | Orchestrator |
-| Define click record struct and API error code constants                    | Orchestrator |
-| Define package layout from CLAUDE.md with `doc.go` stubs                   | Orchestrator |
+| Task                                                                                           | Agent        |
+| ---------------------------------------------------------------------------------------------- | ------------ |
+| `go mod init`, set current stable Go version, `.gitignore` check                               | Orchestrator |
+| Define `links.Validator`, `store.LinkStore`, `store.ClickStore`, `store.StatsStore` interfaces | Orchestrator |
+| Define click record struct and API error code constants                                        | Orchestrator |
+| Define package layout from CLAUDE.md with `doc.go` stubs                                       | Orchestrator |
 
 Exit: `go build ./...` passes on empty stubs. Branch: `feature/contracts`.
 
