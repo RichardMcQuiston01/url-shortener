@@ -50,9 +50,9 @@ order, and how each stage is accepted.
 
 **Dependencies**
 
-- Allowed: standard library, `modernc.org/sqlite`, and `github.com/google/uuid`
-  (approved by the owner for UUID v4 ids). Anything else needs owner approval
-  first.
+- Allowed: standard library and `modernc.org/sqlite`. UUID v4 ids come from a
+  small in-house `crypto/rand` helper, not a library. Anything else needs owner
+  approval first.
 
 ## Agent Roster
 
@@ -110,6 +110,7 @@ Goal: a binary that boots, migrates, and answers `/healthz`.
 | `migrations/0001_init.sql` with `link`, `click`, index, `schema_migration`                     | Foundation   |
 | Open DB with WAL, `busy_timeout=5000`, `foreign_keys=ON`, `synchronous=NORMAL`, one connection | Store        |
 | Migration runner: ordered, transactional, recorded                                             | Store        |
+| UUID v4 helper (`crypto/rand`, version and variant bits set) with format and uniqueness tests  | Store        |
 | `GET /healthz` with trivial DB query, `http.Server` timeouts, SIGTERM shutdown                 | Orchestrator |
 | Skeleton `Makefile` (`fmt`, `vet`, `test`, `run`)                                              | DevOps       |
 
@@ -230,7 +231,7 @@ and show clicks in the admin page.
 
 Resolved:
 
-- UUIDs: use `github.com/google/uuid`.
+- UUIDs: in-house v4 generator (`crypto/rand`), no extra dependency.
 - Sessions: signed stateless cookie.
 - Backups: run inside the app, so there is no cron or sidecar to maintain.
 
