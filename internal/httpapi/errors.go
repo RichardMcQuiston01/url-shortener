@@ -5,14 +5,15 @@ package httpapi
 type ErrorCode string
 
 const (
-	CodeUnauthorized  ErrorCode = "unauthorized"
-	CodeInvalidURL    ErrorCode = "invalid_url"
-	CodeInvalidSlug   ErrorCode = "invalid_slug"
-	CodeSlugReserved  ErrorCode = "slug_reserved"
-	CodeSlugTaken     ErrorCode = "slug_taken"
-	CodeNotFound      ErrorCode = "not_found"
-	CodeRateLimited   ErrorCode = "rate_limited"
-	CodeInternalError ErrorCode = "internal_error"
+	CodeUnauthorized   ErrorCode = "unauthorized"
+	CodeInvalidRequest ErrorCode = "invalid_request"
+	CodeInvalidURL     ErrorCode = "invalid_url"
+	CodeInvalidSlug    ErrorCode = "invalid_slug"
+	CodeSlugReserved   ErrorCode = "slug_reserved"
+	CodeSlugTaken      ErrorCode = "slug_taken"
+	CodeNotFound       ErrorCode = "not_found"
+	CodeRateLimited    ErrorCode = "rate_limited"
+	CodeInternalError  ErrorCode = "internal_error"
 )
 
 // ErrorBody is the JSON body returned for every API failure.
