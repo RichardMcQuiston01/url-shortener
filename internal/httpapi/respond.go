@@ -11,7 +11,9 @@ import (
 func writeJSON(responseWriter http.ResponseWriter, logger *slog.Logger, status int, value any) {
 	responseWriter.Header().Set("Content-Type", "application/json; charset=utf-8")
 	responseWriter.WriteHeader(status)
-	if err := json.NewEncoder(responseWriter).Encode(value); err != nil {
+	encoder := json.NewEncoder(responseWriter)
+	encoder.SetEscapeHTML(false) // keep <API_KEY> readable in messages
+	if err := encoder.Encode(value); err != nil {
 		logger.Error("encode JSON response", "status", status, "error", err)
 	}
 }

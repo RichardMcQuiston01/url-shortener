@@ -75,25 +75,60 @@ func (sqlite *SQLite) GetByTargetURL(ctx context.Context, targetURL string) (Lin
 	return link, nil
 }
 
+// List returns links newest first, skipping offset and returning at most limit.
+func (sqlite *SQLite) List(ctx context.Context, limit int, offset int) ([]Link, error) {
+	rows, err := sqlite.db.QueryContext(ctx,
+		"SELECT "+linkColumns+" FROM link ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list links (limit %d, offset %d): %w", limit, offset, err)
+	}
+	defer rows.Close()
+
+	links := make([]Link, 0, limit)
+	for rows.Next() {
+		link, err := scanLink(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list links: %w", err)
+		}
+		links = append(links, link)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list links: read rows: %w", err)
+	}
+	return links, nil
+}
+
 func (sqlite *SQLite) queryLink(ctx context.Context, whereClause string, argument string) (Link, error) {
+	row := sqlite.db.QueryRowContext(ctx, "SELECT "+linkColumns+" FROM link "+whereClause+" LIMIT 1", argument)
+	link, err := scanLink(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Link{}, ErrNotFound
+	}
+	return link, err
+}
+
+// rowScanner is satisfied by *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(destinations ...any) error
+}
+
+func scanLink(row rowScanner) (Link, error) {
 	var (
 		link                 Link
 		note                 sql.NullString
 		createdAt, updatedAt string
 	)
-	err := sqlite.db.QueryRowContext(ctx,
-		"SELECT "+linkColumns+" FROM link "+whereClause+" LIMIT 1", argument).
-		Scan(&link.ID, &link.Slug, &link.TargetURL, &note, &createdAt, &updatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Link{}, ErrNotFound
-	}
-	if err != nil {
-		return Link{}, fmt.Errorf("query link: %w", err)
+	if err := row.Scan(&link.ID, &link.Slug, &link.TargetURL, &note, &createdAt, &updatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Link{}, err
+		}
+		return Link{}, fmt.Errorf("scan link: %w", err)
 	}
 
 	if note.Valid {
 		link.Note = &note.String
 	}
+	var err error
 	if link.CreatedAt, err = time.Parse(time.RFC3339, createdAt); err != nil {
 		return Link{}, fmt.Errorf("parse created_at %q of link %q: %w", createdAt, link.Slug, err)
 	}

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/richardmcquiston01/url-shortener/internal/config"
+	"github.com/richardmcquiston01/url-shortener/internal/httpapi"
+	"github.com/richardmcquiston01/url-shortener/internal/links"
 	"github.com/richardmcquiston01/url-shortener/internal/redirect"
 	"github.com/richardmcquiston01/url-shortener/internal/store"
 )
@@ -56,9 +58,16 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
+	validator, err := links.NewValidator(appConfig.BaseURL)
+	if err != nil {
+		return fmt.Errorf("build link validator from BASE_URL: %w", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", redirect.HealthHandler(database, logger))
 	redirect.NewHandler(database, appConfig.HomeRedirectURL, logger).Register(mux)
+	httpapi.NewHandler(database, validator, links.RandomSlugGenerator{}, appConfig.BaseURL, logger).
+		Register(mux, appConfig.APIKey)
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort("", strconv.Itoa(appConfig.Port)),
