@@ -108,3 +108,7 @@ td.number, th.number { text-align: right; font-variant-numeric: tabular-nums; }
 td.break { word-break: break-all; }
 
 .pager { display: flex; gap: 1rem; margin: 1rem 0; }
+
+.details { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1.5rem; margin: 1rem 0; }
+.details dt { font-weight: 600; }
+.details dd { margin: 0; }
