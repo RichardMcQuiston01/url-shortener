@@ -103,6 +103,7 @@ func (handler *Handler) Register(mux *http.ServeMux) error {
 	mux.Handle("POST /admin/logout", handler.wrap(true, handler.logout))
 	mux.Handle("GET /admin", handler.wrap(true, handler.showDashboard))
 	mux.Handle("POST /admin/links", handler.wrap(true, handler.createLink))
+	mux.Handle("GET /admin/links/{id}", handler.wrap(true, handler.showLink))
 	return nil
 }
 

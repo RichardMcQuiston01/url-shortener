@@ -34,7 +34,7 @@ type loginContent struct {
 	Error string
 }
 
-var pageNames []string = []string{"login", "dashboard", "error"}
+var pageNames []string = []string{"login", "dashboard", "link", "error"}
 
 func parsePages(baseURL string) (map[string]*pageTemplate, error) {
 	functions := template.FuncMap{
