@@ -62,7 +62,7 @@ func buildMux(t *testing.T, linkStore store.LinkStore, statsStore store.StatsSto
 		t.Fatalf("NewValidator: %v", err)
 	}
 	mux := http.NewServeMux()
-	NewHandler(linkStore, statsStore, validator, generator, testBaseURL, discardLogger()).Register(mux, testAPIKey)
+	NewHandler(links.NewService(linkStore, validator, generator), statsStore, testBaseURL, discardLogger()).Register(mux, testAPIKey)
 	return mux
 }
 

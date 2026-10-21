@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/richardmcquiston01/url-shortener/internal/links"
 	"github.com/richardmcquiston01/url-shortener/internal/store"
@@ -19,8 +18,6 @@ import (
 
 const (
 	maxRequestBodyBytes int64 = 16 * 1024
-	maxNoteLength       int   = 500
-	maxSlugAttempts     int   = 10
 	defaultListLimit    int   = 50
 	maxListLimit        int   = 200
 
@@ -29,32 +26,21 @@ const (
 
 // Handler serves the JSON API under /api, protected by a bearer API key.
 type Handler struct {
-	linkStore     store.LinkStore
-	statsStore    store.StatsStore
-	validator     links.Validator
-	slugGenerator links.SlugGenerator
-	baseURL       string
-	logger        *slog.Logger
+	linkService *links.Service
+	statsStore  store.StatsStore
+	baseURL     string
+	logger      *slog.Logger
 }
 
 // NewHandler builds the API handler. baseURL is the public BASE_URL (no
 // trailing slash) used to build each link's short_url.
 func NewHandler(
-	linkStore store.LinkStore,
+	linkService *links.Service,
 	statsStore store.StatsStore,
-	validator links.Validator,
-	slugGenerator links.SlugGenerator,
 	baseURL string,
 	logger *slog.Logger,
 ) *Handler {
-	return &Handler{
-		linkStore:     linkStore,
-		statsStore:    statsStore,
-		validator:     validator,
-		slugGenerator: slugGenerator,
-		baseURL:       baseURL,
-		logger:        logger,
-	}
+	return &Handler{linkService: linkService, statsStore: statsStore, baseURL: baseURL, logger: logger}
 }
 
 // Register adds the API routes to mux, each behind RequireAPIKey. Unknown
@@ -126,87 +112,21 @@ func (handler *Handler) createLink(responseWriter http.ResponseWriter, request *
 		return
 	}
 
-	targetURL := strings.TrimSpace(createRequest.URL)
-	if err := handler.validator.ValidateTargetURL(targetURL); err != nil {
-		handler.writeValidationError(responseWriter, err)
-		return
-	}
-
-	var note *string
-	if trimmedNote := strings.TrimSpace(createRequest.Note); trimmedNote != "" {
-		if utf8.RuneCountInString(trimmedNote) > maxNoteLength {
-			writeError(responseWriter, handler.logger, http.StatusBadRequest, CodeInvalidRequest,
-				fmt.Sprintf("note is too long (%d characters, maximum is %d)", utf8.RuneCountInString(trimmedNote), maxNoteLength))
-			return
-		}
-		note = &trimmedNote
-	}
-
-	slug := strings.TrimSpace(createRequest.Slug)
-	if slug != "" {
-		handler.createWithCustomSlug(responseWriter, request, slug, targetURL, note)
-		return
-	}
-	handler.createWithGeneratedSlug(responseWriter, request, targetURL, note)
-}
-
-func (handler *Handler) createWithCustomSlug(responseWriter http.ResponseWriter, request *http.Request, slug string, targetURL string, note *string) {
-	if err := handler.validator.ValidateSlug(slug); err != nil {
-		handler.writeValidationError(responseWriter, err)
-		return
-	}
-
-	link, err := handler.linkStore.Create(request.Context(), store.NewLink{Slug: slug, TargetURL: targetURL, Note: note})
-	if errors.Is(err, store.ErrSlugTaken) {
-		writeError(responseWriter, handler.logger, http.StatusConflict, CodeSlugTaken,
-			fmt.Sprintf("slug %q is already used by another link", slug))
-		return
-	}
+	link, created, err := handler.linkService.Create(request.Context(), links.CreateRequest{
+		URL:  createRequest.URL,
+		Slug: createRequest.Slug,
+		Note: createRequest.Note,
+	})
 	if err != nil {
-		handler.writeInternalError(responseWriter, "create link with custom slug", err)
-		return
-	}
-	writeJSON(responseWriter, handler.logger, http.StatusCreated, handler.toLinkResponse(link))
-}
-
-// createWithGeneratedSlug returns the existing link (200) if the URL is already
-// shortened, otherwise creates a new one (201) with a generated slug, retrying
-// a bounded number of times on collisions.
-func (handler *Handler) createWithGeneratedSlug(responseWriter http.ResponseWriter, request *http.Request, targetURL string, note *string) {
-	existing, err := handler.linkStore.GetByTargetURL(request.Context(), targetURL)
-	if err == nil {
-		writeJSON(responseWriter, handler.logger, http.StatusOK, handler.toLinkResponse(existing))
-		return
-	}
-	if !errors.Is(err, store.ErrNotFound) {
-		handler.writeInternalError(responseWriter, "look up existing link by target url", err)
+		handler.writeCreateError(responseWriter, err)
 		return
 	}
 
-	for attempt := 1; attempt <= maxSlugAttempts; attempt++ {
-		slug, err := handler.slugGenerator.Generate()
-		if err != nil {
-			handler.writeInternalError(responseWriter, "generate slug", err)
-			return
-		}
-		if handler.validator.ValidateSlug(slug) != nil {
-			continue // a generated slug that is reserved: draw again
-		}
-
-		link, err := handler.linkStore.Create(request.Context(), store.NewLink{Slug: slug, TargetURL: targetURL, Note: note})
-		if errors.Is(err, store.ErrSlugTaken) {
-			continue
-		}
-		if err != nil {
-			handler.writeInternalError(responseWriter, "create link with generated slug", err)
-			return
-		}
-		writeJSON(responseWriter, handler.logger, http.StatusCreated, handler.toLinkResponse(link))
-		return
+	status := http.StatusOK // the URL was already shortened
+	if created {
+		status = http.StatusCreated
 	}
-
-	handler.writeInternalError(responseWriter, "generate a free slug",
-		fmt.Errorf("no free slug found after %d attempts", maxSlugAttempts))
+	writeJSON(responseWriter, handler.logger, status, handler.toLinkResponse(link))
 }
 
 func (handler *Handler) listLinks(responseWriter http.ResponseWriter, request *http.Request) {
@@ -257,11 +177,19 @@ func (handler *Handler) unknownEndpoint(responseWriter http.ResponseWriter, requ
 		fmt.Sprintf("no API endpoint for %s %s", request.Method, request.URL.Path))
 }
 
-// writeValidationError maps a links validation error to its API code, using
-// the validator's specific message.
-func (handler *Handler) writeValidationError(responseWriter http.ResponseWriter, err error) {
-	code := CodeInvalidRequest
+// writeCreateError maps a link service error to its status and API code. Rule
+// violations use the service's specific message; anything else is internal.
+func (handler *Handler) writeCreateError(responseWriter http.ResponseWriter, err error) {
+	var validationError *links.ValidationError
+	if !errors.As(err, &validationError) {
+		handler.writeInternalError(responseWriter, "create link", err)
+		return
+	}
+
+	status, code := http.StatusBadRequest, CodeInvalidRequest
 	switch {
+	case errors.Is(err, store.ErrSlugTaken):
+		status, code = http.StatusConflict, CodeSlugTaken
 	case errors.Is(err, links.ErrInvalidURL):
 		code = CodeInvalidURL
 	case errors.Is(err, links.ErrSlugReserved):
@@ -269,7 +197,7 @@ func (handler *Handler) writeValidationError(responseWriter http.ResponseWriter,
 	case errors.Is(err, links.ErrInvalidSlug):
 		code = CodeInvalidSlug
 	}
-	writeError(responseWriter, handler.logger, http.StatusBadRequest, code, err.Error())
+	writeError(responseWriter, handler.logger, status, code, err.Error())
 }
 
 // writeInternalError logs the detail and sends only a generic message.
