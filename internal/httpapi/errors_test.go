@@ -11,6 +11,7 @@ func TestErrorCodesAreStable(t *testing.T) {
 		expected string
 	}{
 		{CodeUnauthorized, "unauthorized"},
+		{CodeInvalidRequest, "invalid_request"},
 		{CodeInvalidURL, "invalid_url"},
 		{CodeInvalidSlug, "invalid_slug"},
 		{CodeSlugReserved, "slug_reserved"},
