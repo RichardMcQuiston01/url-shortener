@@ -68,10 +68,6 @@ func (handler *Handler) logout(responseWriter http.ResponseWriter, request *http
 	http.Redirect(responseWriter, request, "/admin/login", http.StatusSeeOther)
 }
 
-func (handler *Handler) showDashboard(responseWriter http.ResponseWriter, _ *http.Request, current *session) {
-	handler.render(responseWriter, http.StatusOK, "dashboard", current, "Links", nil)
-}
-
 // fail logs the detail and shows a generic error page.
 func (handler *Handler) fail(responseWriter http.ResponseWriter, action string, err error) {
 	handler.logger.Error("admin request failed", "action", action, "error", err)
