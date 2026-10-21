@@ -119,3 +119,47 @@ func TestGetByTargetURLReturnsOldestLink(t *testing.T) {
 		t.Errorf("GetByTargetURL = %+v, %v; want the oldest link (first)", found, err)
 	}
 }
+
+func TestListReturnsNewestFirstWithPaging(t *testing.T) {
+	sqlite, _ := openTestStore(t)
+	ctx := context.Background()
+	for index, slug := range []string{"a", "b", "c"} {
+		created, err := sqlite.Create(ctx, NewLink{Slug: slug, TargetURL: "https://example.com/" + slug})
+		if err != nil {
+			t.Fatalf("Create %q: %v", slug, err)
+		}
+		// Space the timestamps out so ordering does not depend on the clock.
+		stamp := time.Date(2026, 1, index+1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+		if _, err := sqlite.db.ExecContext(ctx, "UPDATE link SET created_at = ? WHERE id = ?", stamp, created.ID); err != nil {
+			t.Fatalf("set created_at: %v", err)
+		}
+	}
+
+	testCases := []struct {
+		name     string
+		limit    int
+		offset   int
+		expected []string
+	}{
+		{"all", 10, 0, []string{"c", "b", "a"}},
+		{"first page", 2, 0, []string{"c", "b"}},
+		{"second page", 2, 2, []string{"a"}},
+		{"past the end", 2, 5, []string{}},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			links, err := sqlite.List(ctx, testCase.limit, testCase.offset)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(links) != len(testCase.expected) {
+				t.Fatalf("got %d links, want %d", len(links), len(testCase.expected))
+			}
+			for index, slug := range testCase.expected {
+				if links[index].Slug != slug {
+					t.Errorf("links[%d].Slug = %q, want %q", index, links[index].Slug, slug)
+				}
+			}
+		})
+	}
+}
