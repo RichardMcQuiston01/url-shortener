@@ -77,7 +77,7 @@ func run(logger *slog.Logger) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", redirect.HealthHandler(database, logger))
 	redirect.NewHandler(database, clickRecorder, appConfig.HomeRedirectURL, logger).Register(mux)
-	httpapi.NewHandler(database, validator, links.RandomSlugGenerator{}, appConfig.BaseURL, logger).
+	httpapi.NewHandler(database, database, validator, links.RandomSlugGenerator{}, appConfig.BaseURL, logger).
 		Register(mux, appConfig.APIKey)
 
 	httpServer := &http.Server{

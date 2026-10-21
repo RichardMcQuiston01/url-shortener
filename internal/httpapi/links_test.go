@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/richardmcquiston01/url-shortener/internal/links"
 	"github.com/richardmcquiston01/url-shortener/internal/store"
@@ -51,17 +52,17 @@ func newTestServer(t *testing.T, generator links.SlugGenerator) testServer {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { sqlite.Close() })
-	return testServer{mux: buildMux(t, sqlite, generator), linkStore: sqlite}
+	return testServer{mux: buildMux(t, sqlite, sqlite, generator), linkStore: sqlite}
 }
 
-func buildMux(t *testing.T, linkStore store.LinkStore, generator links.SlugGenerator) *http.ServeMux {
+func buildMux(t *testing.T, linkStore store.LinkStore, statsStore store.StatsStore, generator links.SlugGenerator) *http.ServeMux {
 	t.Helper()
 	validator, err := links.NewValidator(testBaseURL)
 	if err != nil {
 		t.Fatalf("NewValidator: %v", err)
 	}
 	mux := http.NewServeMux()
-	NewHandler(linkStore, validator, generator, testBaseURL, discardLogger()).Register(mux, testAPIKey)
+	NewHandler(linkStore, statsStore, validator, generator, testBaseURL, discardLogger()).Register(mux, testAPIKey)
 	return mux
 }
 
@@ -232,7 +233,7 @@ func TestGeneratedSlugExhaustionIsInternalError(t *testing.T) {
 
 func TestStoreFailureIsInternalErrorWithoutDetail(t *testing.T) {
 	realServer := newTestServer(t, links.RandomSlugGenerator{})
-	mux := buildMux(t, brokenLookupStore{realServer.linkStore}, links.RandomSlugGenerator{})
+	mux := buildMux(t, brokenLookupStore{realServer.linkStore}, realServer.linkStore, links.RandomSlugGenerator{})
 
 	recorder := doRequest(mux, http.MethodPost, "/api/links", `{"url":"https://example.com/x"}`, "Bearer "+testAPIKey)
 	assertError(t, recorder, http.StatusInternalServerError, CodeInternalError, "internal error occurred")
@@ -257,7 +258,7 @@ func TestEveryRouteRequiresTheAPIKey(t *testing.T) {
 			})
 		}
 	}
-	if count, _ := server.linkStore.List(context.Background(), 10, 0); len(count) != 0 {
+	if created, _ := server.linkStore.ListLinkSummaries(context.Background(), 10, 0); len(created) != 0 {
 		t.Error("an unauthorized request created a link")
 	}
 }
@@ -331,4 +332,59 @@ func TestUnknownEndpointAndMethodReturnJSONNotFound(t *testing.T) {
 	server := newTestServer(t, links.RandomSlugGenerator{})
 	assertError(t, server.do(http.MethodGet, "/api/nope", ""), http.StatusNotFound, CodeNotFound, "no API endpoint")
 	assertError(t, server.do(http.MethodDelete, "/api/links", ""), http.StatusNotFound, CodeNotFound, "DELETE /api/links")
+}
+
+func TestLinkResponsesIncludeClickCountsWithoutBots(t *testing.T) {
+	server := newTestServer(t, links.RandomSlugGenerator{})
+	ctx := context.Background()
+	busy := decodeLink(t, server.do(http.MethodPost, "/api/links", `{"url":"https://example.com/busy","slug":"busy"}`))
+	server.do(http.MethodPost, "/api/links", `{"url":"https://example.com/quiet","slug":"quiet"}`)
+
+	linkID, _ := busy["id"].(string)
+	today := time.Now().UTC()
+	longAgo := today.AddDate(0, 0, -60)
+	if err := server.linkStore.InsertClicks(ctx, []store.Click{
+		{LinkID: linkID, ClickedAt: today},
+		{LinkID: linkID, ClickedAt: today},
+		{LinkID: linkID, ClickedAt: longAgo},
+		{LinkID: linkID, ClickedAt: today, IsBot: true},
+	}); err != nil {
+		t.Fatalf("insert clicks: %v", err)
+	}
+
+	one := decodeLink(t, server.do(http.MethodGet, "/api/links/busy", ""))
+	if one["total_clicks"] != float64(3) || one["clicks_7_days"] != float64(2) || one["clicks_30_days"] != float64(2) {
+		t.Errorf("busy counts = total %v, 7d %v, 30d %v; want 3, 2, 2 (bot excluded)",
+			one["total_clicks"], one["clicks_7_days"], one["clicks_30_days"])
+	}
+	if one["slug"] != "busy" || one["short_url"] != "https://go.example.com/busy" {
+		t.Errorf("link fields must stay alongside the counts: %v", one)
+	}
+
+	var list struct {
+		Links []map[string]any `json:"links"`
+	}
+	if err := json.Unmarshal(server.do(http.MethodGet, "/api/links", "").Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	countsBySlug := map[string]float64{}
+	for _, link := range list.Links {
+		slug, _ := link["slug"].(string)
+		total, ok := link["total_clicks"].(float64)
+		if !ok {
+			t.Fatalf("list item %v has no numeric total_clicks", link)
+		}
+		countsBySlug[slug] = total
+	}
+	if countsBySlug["busy"] != 3 || countsBySlug["quiet"] != 0 {
+		t.Errorf("list counts = %v, want busy 3 and quiet 0", countsBySlug)
+	}
+}
+
+func TestCreateResponseHasNoClickCounts(t *testing.T) {
+	server := newTestServer(t, links.RandomSlugGenerator{})
+	body := decodeLink(t, server.do(http.MethodPost, "/api/links", `{"url":"https://example.com/new","slug":"fresh"}`))
+	if _, present := body["total_clicks"]; present {
+		t.Errorf("the create response should keep the documented shape, got %v", body)
+	}
 }

@@ -80,9 +80,6 @@ type LinkStore interface {
 	GetByID(ctx context.Context, id string) (Link, error)
 	// GetByTargetURL returns the oldest link with the target, or ErrNotFound.
 	GetByTargetURL(ctx context.Context, targetURL string) (Link, error)
-	// List returns links newest first, skipping offset and returning at most
-	// limit of them.
-	List(ctx context.Context, limit int, offset int) ([]Link, error)
 }
 
 // ClickStore records clicks.
