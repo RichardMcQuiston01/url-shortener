@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/richardmcquiston01/url-shortener/internal/admin"
 	"github.com/richardmcquiston01/url-shortener/internal/config"
 	"github.com/richardmcquiston01/url-shortener/internal/httpapi"
 	"github.com/richardmcquiston01/url-shortener/internal/links"
@@ -73,12 +74,29 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("build link validator from BASE_URL: %w", err)
 	}
+	linkService := links.NewService(database, validator, links.RandomSlugGenerator{})
+
+	adminHandler, err := admin.NewHandler(admin.Options{
+		AdminPassword: appConfig.AdminPassword,
+		SessionSecret: appConfig.SessionSecret,
+		BaseURL:       appConfig.BaseURL,
+		TrustProxy:    appConfig.TrustProxy,
+		Links:         linkService,
+		Stats:         database,
+		Logger:        logger,
+	})
+	if err != nil {
+		return fmt.Errorf("build admin handler: %w", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", redirect.HealthHandler(database, logger))
 	redirect.NewHandler(database, clickRecorder, appConfig.HomeRedirectURL, logger).Register(mux)
-	httpapi.NewHandler(links.NewService(database, validator, links.RandomSlugGenerator{}), database, appConfig.BaseURL, logger).
+	httpapi.NewHandler(linkService, database, appConfig.BaseURL, logger).
 		Register(mux, appConfig.APIKey)
+	if err := adminHandler.Register(mux); err != nil {
+		return fmt.Errorf("register admin routes: %w", err)
+	}
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort("", strconv.Itoa(appConfig.Port)),
