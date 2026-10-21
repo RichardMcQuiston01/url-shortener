@@ -32,3 +32,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# go / runtime artifacts (never commit databases, backups or local binaries)
+/data/
+*.db
+*.db-wal
+*.db-shm
+/server
+/pid
+*.log
