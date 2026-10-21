@@ -1,0 +1,36 @@
+# One container, one data folder. The service is not published on a host port:
+# the existing Caddy container reaches it by name (shortlinks:8080) over a shared
+# Docker network.
+#
+# PROXY_NETWORK names that network. Set it in .env (see .env.example). Find the
+# right name on the server with:  docker network ls
+services:
+  shortlinks:
+    build: .
+    image: shortlinks:latest
+    container_name: shortlinks
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    expose:
+      - "8080"
+    networks:
+      - proxy
+    stop_grace_period: 20s
+    # The app writes only to /data, so everything else can be read-only.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-hired-hand-net}
