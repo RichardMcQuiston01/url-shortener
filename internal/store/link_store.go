@@ -124,18 +124,26 @@ func scanLink(row rowScanner) (Link, error) {
 		}
 		return Link{}, fmt.Errorf("scan link: %w", err)
 	}
+	if err := fillLinkFields(&link, note, createdAt, updatedAt); err != nil {
+		return Link{}, err
+	}
+	return link, nil
+}
 
+// fillLinkFields converts the nullable note and the stored RFC 3339 timestamps
+// into the Link's typed fields.
+func fillLinkFields(link *Link, note sql.NullString, createdAt string, updatedAt string) error {
 	if note.Valid {
 		link.Note = &note.String
 	}
 	var err error
 	if link.CreatedAt, err = time.Parse(time.RFC3339, createdAt); err != nil {
-		return Link{}, fmt.Errorf("parse created_at %q of link %q: %w", createdAt, link.Slug, err)
+		return fmt.Errorf("parse created_at %q of link %q: %w", createdAt, link.Slug, err)
 	}
 	if link.UpdatedAt, err = time.Parse(time.RFC3339, updatedAt); err != nil {
-		return Link{}, fmt.Errorf("parse updated_at %q of link %q: %w", updatedAt, link.Slug, err)
+		return fmt.Errorf("parse updated_at %q of link %q: %w", updatedAt, link.Slug, err)
 	}
-	return link, nil
+	return nil
 }
 
 func isUniqueViolation(err error) bool {
