@@ -85,7 +85,7 @@ curl -i http://localhost:8080/hello
 ```
 
 What gets counted: one click per `GET` redirect. `HEAD` requests, unknown slugs and anything that looks
-like a bot or link checker are not counted in the totals. Only the date, the referrer _host_ and a bot flag
+like a bot or link checker are not counted in the totals. Only the time of the click, the referrer _host_ and a bot flag
 are stored: no IP addresses and no user agents.
 
 [Back to Top](#table-of-contents)
