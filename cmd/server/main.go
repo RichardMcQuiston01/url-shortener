@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/richardmcquiston01/url-shortener/internal/admin"
+	"github.com/richardmcquiston01/url-shortener/internal/backup"
 	"github.com/richardmcquiston01/url-shortener/internal/config"
 	"github.com/richardmcquiston01/url-shortener/internal/httpapi"
 	"github.com/richardmcquiston01/url-shortener/internal/links"
@@ -57,6 +59,20 @@ func run(logger *slog.Logger) error {
 		if closeErr := database.Close(); closeErr != nil {
 			logger.Error("close database", "error", closeErr)
 		}
+	}()
+
+	// Nightly backups run inside the app. Stopping them is deferred after the
+	// database close above, so it runs first and no backup is cut off mid-copy.
+	backupContext, stopBackups := context.WithCancel(signalContext)
+	backupsStopped := make(chan struct{})
+	go func() {
+		defer close(backupsStopped)
+		backup.NewScheduler(database, filepath.Join(filepath.Dir(appConfig.DatabasePath), "backups"), logger, backup.Options{}).
+			Run(backupContext)
+	}()
+	defer func() {
+		stopBackups()
+		<-backupsStopped
 	}()
 
 	clickRecorder := redirect.NewBatchRecorder(database, logger, redirect.BatchRecorderOptions{})
