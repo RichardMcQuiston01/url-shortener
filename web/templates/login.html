@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>Sign in</h1>
+{{if .Content.Error}}<p class="alert alert-error" role="alert">{{.Content.Error}}</p>{{end}}
+<form method="post" action="/admin/login" class="stack narrow">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <label for="password">Admin password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Sign in</button>
+</form>
+{{end}}

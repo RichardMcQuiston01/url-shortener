@@ -1,0 +1,26 @@
+{{define "base"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{.Title}} · Short links admin</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="/admin">Short links admin</a>
+    {{if .Authenticated}}
+    <form method="post" action="/admin/logout">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit" class="button-link">Sign out</button>
+    </form>
+    {{end}}
+  </header>
+  <main id="main">
+    {{template "content" .}}
+  </main>
+</body>
+</html>
+{{end}}
