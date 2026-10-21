@@ -58,6 +58,17 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
+	clickRecorder := redirect.NewBatchRecorder(database, logger, redirect.BatchRecorderOptions{})
+	// Deferred after the database close above, so it runs first: queued clicks
+	// are flushed while the database is still open.
+	defer func() {
+		flushContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if closeErr := clickRecorder.Close(flushContext); closeErr != nil {
+			logger.Error("flush clicks on shutdown", "error", closeErr)
+		}
+	}()
+
 	validator, err := links.NewValidator(appConfig.BaseURL)
 	if err != nil {
 		return fmt.Errorf("build link validator from BASE_URL: %w", err)
@@ -65,7 +76,7 @@ func run(logger *slog.Logger) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", redirect.HealthHandler(database, logger))
-	redirect.NewHandler(database, appConfig.HomeRedirectURL, logger).Register(mux)
+	redirect.NewHandler(database, clickRecorder, appConfig.HomeRedirectURL, logger).Register(mux)
 	httpapi.NewHandler(database, validator, links.RandomSlugGenerator{}, appConfig.BaseURL, logger).
 		Register(mux, appConfig.APIKey)
 

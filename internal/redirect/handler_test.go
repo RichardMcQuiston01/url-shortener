@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/richardmcquiston01/url-shortener/internal/store"
 )
@@ -28,12 +30,38 @@ func (finder fakeFinder) GetBySlug(_ context.Context, slug string) (store.Link, 
 	return link, nil
 }
 
+// fakeRecorder collects clicks; accept=false simulates a full queue.
+type fakeRecorder struct {
+	mutex  sync.Mutex
+	clicks []store.Click
+	reject bool
+}
+
+func (recorder *fakeRecorder) Record(click store.Click) bool {
+	recorder.mutex.Lock()
+	defer recorder.mutex.Unlock()
+	recorder.clicks = append(recorder.clicks, click)
+	return !recorder.reject
+}
+
+func (recorder *fakeRecorder) Close(context.Context) error { return nil }
+
+func (recorder *fakeRecorder) recorded() []store.Click {
+	recorder.mutex.Lock()
+	defer recorder.mutex.Unlock()
+	return append([]store.Click(nil), recorder.clicks...)
+}
+
 func newTestMux(finder LinkFinder, homeRedirectURL string) *http.ServeMux {
+	return newTestMuxWithRecorder(finder, &fakeRecorder{}, homeRedirectURL)
+}
+
+func newTestMuxWithRecorder(finder LinkFinder, recorder ClickRecorder, homeRedirectURL string) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(responseWriter http.ResponseWriter, _ *http.Request) {
 		_, _ = responseWriter.Write([]byte("ok\n"))
 	})
-	NewHandler(finder, homeRedirectURL, discardLogger()).Register(mux)
+	NewHandler(finder, recorder, homeRedirectURL, discardLogger()).Register(mux)
 	return mux
 }
 
@@ -146,5 +174,66 @@ func TestRedirectWithRealStore(t *testing.T) {
 	}
 	if missing := serve(mux, http.MethodGet, "/missing"); missing.Code != http.StatusNotFound {
 		t.Errorf("unknown slug: status = %d, want 404", missing.Code)
+	}
+}
+
+func TestRedirectRecordsClickDetails(t *testing.T) {
+	recorder := &fakeRecorder{}
+	finder := fakeFinder{links: map[string]store.Link{"hello": {ID: "link-1", Slug: "hello", TargetURL: "https://example.com/x"}}}
+	mux := newTestMuxWithRecorder(finder, recorder, "")
+
+	request := httptest.NewRequest(http.MethodGet, "/hello", nil)
+	request.Header.Set("Referer", "https://News.Example.com:8443/story?id=7")
+	request.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Firefox/130.0")
+	before := time.Now().UTC()
+	mux.ServeHTTP(httptest.NewRecorder(), request)
+
+	clicks := recorder.recorded()
+	if len(clicks) != 1 {
+		t.Fatalf("recorded %d clicks, want 1", len(clicks))
+	}
+	click := clicks[0]
+	if click.LinkID != "link-1" || click.IsBot {
+		t.Errorf("click = %+v, want link-1 and not a bot", click)
+	}
+	if click.ReferrerHost == nil || *click.ReferrerHost != "news.example.com" {
+		t.Errorf("referrer host = %v, want news.example.com (host only)", click.ReferrerHost)
+	}
+	if click.ClickedAt.Before(before.Add(-time.Second)) || click.ClickedAt.Location() != time.UTC {
+		t.Errorf("clicked_at = %v, want a recent UTC time", click.ClickedAt)
+	}
+}
+
+func TestOnlyCountedRequestsAreRecorded(t *testing.T) {
+	finder := fakeFinder{links: map[string]store.Link{"hello": {ID: "link-1", Slug: "hello", TargetURL: "https://example.com/x"}}}
+	testCases := []struct {
+		name          string
+		method        string
+		path          string
+		expectedCount int
+	}{
+		{"GET is counted", http.MethodGet, "/hello", 1},
+		{"HEAD is not counted", http.MethodHead, "/hello", 0},
+		{"unknown slug is not counted", http.MethodGet, "/nope", 0},
+		{"robots.txt is not counted", http.MethodGet, "/robots.txt", 0},
+		{"home is not counted", http.MethodGet, "/", 0},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := &fakeRecorder{}
+			serve(newTestMuxWithRecorder(finder, recorder, "https://richardmcquiston.com"), testCase.method, testCase.path)
+			if count := len(recorder.recorded()); count != testCase.expectedCount {
+				t.Errorf("recorded %d clicks, want %d", count, testCase.expectedCount)
+			}
+		})
+	}
+}
+
+func TestRedirectStillWorksWhenRecorderRejectsClicks(t *testing.T) {
+	finder := fakeFinder{links: map[string]store.Link{"hello": {ID: "link-1", Slug: "hello", TargetURL: "https://example.com/x"}}}
+	mux := newTestMuxWithRecorder(finder, &fakeRecorder{reject: true}, "")
+	recorder := serve(mux, http.MethodGet, "/hello")
+	if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "https://example.com/x" {
+		t.Errorf("a full click queue must not affect the redirect: %d %q", recorder.Code, recorder.Header().Get("Location"))
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/richardmcquiston01/url-shortener/internal/store"
 )
@@ -21,14 +22,16 @@ type LinkFinder interface {
 // HEAD requests redirect too.
 type Handler struct {
 	links           LinkFinder
+	recorder        ClickRecorder
 	homeRedirectURL string
 	logger          *slog.Logger
 }
 
-// NewHandler builds the public handler. homeRedirectURL may be empty, in which
-// case GET / returns a plain 404.
-func NewHandler(links LinkFinder, homeRedirectURL string, logger *slog.Logger) *Handler {
-	return &Handler{links: links, homeRedirectURL: homeRedirectURL, logger: logger}
+// NewHandler builds the public handler. recorder receives one click per
+// redirected GET (never HEAD). homeRedirectURL may be empty, in which case
+// GET / returns a plain 404.
+func NewHandler(links LinkFinder, recorder ClickRecorder, homeRedirectURL string, logger *slog.Logger) *Handler {
+	return &Handler{links: links, recorder: recorder, homeRedirectURL: homeRedirectURL, logger: logger}
 }
 
 // Register adds the public routes to mux.
@@ -50,6 +53,12 @@ func (handler *Handler) serveSlug(responseWriter http.ResponseWriter, request *h
 		handler.logger.Error("look up link for redirect", "slug", slug, "error", err)
 		http.Error(responseWriter, "something went wrong; please try again later", http.StatusInternalServerError)
 		return
+	}
+
+	// Record never blocks, so statistics cannot slow or break the redirect.
+	// HEAD requests (link checkers, previews) are redirected but not counted.
+	if request.Method == http.MethodGet {
+		handler.recorder.Record(newClick(link, request, time.Now()))
 	}
 
 	// 302, not 301, so targets can change later without browsers caching them.
