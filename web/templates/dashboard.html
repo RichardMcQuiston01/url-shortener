@@ -1,4 +1,70 @@
 {{define "content"}}
 <h1>Links</h1>
-<p>You are signed in.</p>
+
+{{with .Content.Notice}}
+<p class="alert alert-success" role="status">{{.Message}} <a href="{{.ShortURL}}">{{.ShortURL}}</a></p>
+{{end}}
+
+<section aria-labelledby="add-heading">
+  <h2 id="add-heading">Add a link</h2>
+  {{if .Content.FormError}}<p class="alert alert-error" role="alert">{{.Content.FormError}}</p>{{end}}
+  <form method="post" action="/admin/links" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <label for="url">Target URL</label>
+    <input id="url" name="url" type="url" required maxlength="2048" placeholder="https://example.com/some/long/path" value="{{.Content.Form.URL}}">
+
+    <label for="slug">Custom slug <span class="hint">(optional)</span></label>
+    <input id="slug" name="slug" maxlength="64" pattern="[A-Za-z0-9_\-]+" aria-describedby="slug-hint" value="{{.Content.Form.Slug}}">
+    <p id="slug-hint" class="hint">Letters, numbers, hyphen and underscore, up to 64. Leave empty for a random one.</p>
+
+    <label for="note">Note <span class="hint">(optional)</span></label>
+    <input id="note" name="note" maxlength="500" placeholder="Chrome ext: Hired Hand" value="{{.Content.Form.Note}}">
+
+    <button type="submit">Add link</button>
+  </form>
+</section>
+
+<section aria-labelledby="links-heading">
+  <h2 id="links-heading">All links</h2>
+  {{if .Content.Links}}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Slug</th>
+          <th scope="col">Short URL</th>
+          <th scope="col">Target</th>
+          <th scope="col">Note</th>
+          <th scope="col">Created</th>
+          <th scope="col" class="number">Clicks</th>
+          <th scope="col" class="number">7 days</th>
+          <th scope="col" class="number">30 days</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Content.Links}}
+        <tr>
+          <td><a href="/admin/links/{{.ID}}">{{.Slug}}</a></td>
+          <td class="break"><a href="{{shortURL .Slug}}">{{shortURL .Slug}}</a></td>
+          <td class="break"><a href="{{.TargetURL}}" rel="noopener noreferrer">{{.TargetURL}}</a></td>
+          <td>{{with .Note}}{{.}}{{end}}</td>
+          <td>{{formatTime .CreatedAt}}</td>
+          <td class="number">{{.TotalClicks}}</td>
+          <td class="number">{{.Clicks7Days}}</td>
+          <td class="number">{{.Clicks30Days}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <nav class="pager" aria-label="Pages">
+    {{if .Content.HasPrevious}}<a href="/admin?page={{.Content.PreviousPage}}" rel="prev">Previous</a>{{end}}
+    <span>Page {{.Content.Page}}</span>
+    {{if .Content.HasNext}}<a href="/admin?page={{.Content.NextPage}}" rel="next">Next</a>{{end}}
+  </nav>
+  {{else}}
+  <p>No links yet. Add the first one above.</p>
+  {{end}}
+</section>
 {{end}}
