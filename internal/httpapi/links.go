@@ -30,6 +30,7 @@ const (
 // Handler serves the JSON API under /api, protected by a bearer API key.
 type Handler struct {
 	linkStore     store.LinkStore
+	statsStore    store.StatsStore
 	validator     links.Validator
 	slugGenerator links.SlugGenerator
 	baseURL       string
@@ -40,6 +41,7 @@ type Handler struct {
 // trailing slash) used to build each link's short_url.
 func NewHandler(
 	linkStore store.LinkStore,
+	statsStore store.StatsStore,
 	validator links.Validator,
 	slugGenerator links.SlugGenerator,
 	baseURL string,
@@ -47,6 +49,7 @@ func NewHandler(
 ) *Handler {
 	return &Handler{
 		linkStore:     linkStore,
+		statsStore:    statsStore,
 		validator:     validator,
 		slugGenerator: slugGenerator,
 		baseURL:       baseURL,
@@ -81,10 +84,28 @@ type linkResponse struct {
 	CreatedAt string  `json:"created_at"`
 }
 
+// linkSummaryResponse is a link plus its click counts. Bot clicks are never
+// counted.
+type linkSummaryResponse struct {
+	linkResponse
+	TotalClicks  int64 `json:"total_clicks"`
+	Clicks7Days  int64 `json:"clicks_7_days"`
+	Clicks30Days int64 `json:"clicks_30_days"`
+}
+
 type listLinksResponse struct {
-	Links  []linkResponse `json:"links"`
-	Limit  int            `json:"limit"`
-	Offset int            `json:"offset"`
+	Links  []linkSummaryResponse `json:"links"`
+	Limit  int                   `json:"limit"`
+	Offset int                   `json:"offset"`
+}
+
+func (handler *Handler) toLinkSummaryResponse(summary store.LinkSummary) linkSummaryResponse {
+	return linkSummaryResponse{
+		linkResponse: handler.toLinkResponse(summary.Link),
+		TotalClicks:  summary.TotalClicks,
+		Clicks7Days:  summary.Clicks7Days,
+		Clicks30Days: summary.Clicks30Days,
+	}
 }
 
 func (handler *Handler) toLinkResponse(link store.Link) linkResponse {
@@ -202,15 +223,15 @@ func (handler *Handler) listLinks(responseWriter http.ResponseWriter, request *h
 		return
 	}
 
-	storedLinks, err := handler.linkStore.List(request.Context(), limit, offset)
+	summaries, err := handler.statsStore.ListLinkSummaries(request.Context(), limit, offset)
 	if err != nil {
 		handler.writeInternalError(responseWriter, "list links", err)
 		return
 	}
 
-	response := listLinksResponse{Links: make([]linkResponse, 0, len(storedLinks)), Limit: limit, Offset: offset}
-	for _, link := range storedLinks {
-		response.Links = append(response.Links, handler.toLinkResponse(link))
+	response := listLinksResponse{Links: make([]linkSummaryResponse, 0, len(summaries)), Limit: limit, Offset: offset}
+	for _, summary := range summaries {
+		response.Links = append(response.Links, handler.toLinkSummaryResponse(summary))
 	}
 	writeJSON(responseWriter, handler.logger, http.StatusOK, response)
 }
@@ -218,17 +239,17 @@ func (handler *Handler) listLinks(responseWriter http.ResponseWriter, request *h
 func (handler *Handler) getLink(responseWriter http.ResponseWriter, request *http.Request) {
 	slug := request.PathValue("slug")
 
-	link, err := handler.linkStore.GetBySlug(request.Context(), slug)
+	summary, err := handler.statsStore.GetLinkSummaryBySlug(request.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(responseWriter, handler.logger, http.StatusNotFound, CodeNotFound,
 			fmt.Sprintf("no link with slug %q exists", slug))
 		return
 	}
 	if err != nil {
-		handler.writeInternalError(responseWriter, "get link by slug", err)
+		handler.writeInternalError(responseWriter, "get link summary by slug", err)
 		return
 	}
-	writeJSON(responseWriter, handler.logger, http.StatusOK, handler.toLinkResponse(link))
+	writeJSON(responseWriter, handler.logger, http.StatusOK, handler.toLinkSummaryResponse(summary))
 }
 
 func (handler *Handler) unknownEndpoint(responseWriter http.ResponseWriter, request *http.Request) {
