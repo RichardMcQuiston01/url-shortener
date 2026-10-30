@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+data
+*.db
+*.db-wal
+*.db-shm
+*.log
+server
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.md
