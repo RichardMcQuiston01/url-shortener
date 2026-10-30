@@ -136,3 +136,12 @@ func (sqlite *SQLite) applyMigration(ctx context.Context, version string, statem
 	}
 	return nil
 }
+
+// BackupTo writes a consistent, compacted copy of the database to
+// destinationPath using VACUUM INTO. The destination file must not exist.
+func (sqlite *SQLite) BackupTo(ctx context.Context, destinationPath string) error {
+	if _, err := sqlite.db.ExecContext(ctx, "VACUUM INTO ?", destinationPath); err != nil {
+		return fmt.Errorf("back up database to %q: %w", destinationPath, err)
+	}
+	return nil
+}
