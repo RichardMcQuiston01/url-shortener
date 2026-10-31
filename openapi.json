@@ -1,0 +1,522 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "URL Shortener API",
+    "version": "0.1.0",
+    "summary": "Create and read short links.",
+    "description": "A small JSON API for a self-hosted URL shortener. Every request needs `Authorization: Bearer <API_KEY>` (the `API_KEY` from the server's `.env`).\n\nEvery failure has the same body, `{\"error\": \"<code>\", \"message\": \"<what went wrong>\"}`. Match on `error`, which is stable; `message` is for people and may change.\n\nClick counts never include bots or link checkers. Only the redirects themselves (`GET /{slug}`) and the admin pages are outside this API.",
+    "license": {
+      "name": "Apache 2.0",
+      "identifier": "Apache-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://go.richardmcquiston.com",
+      "description": "Production. Use the server's BASE_URL if it has changed."
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Local development"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "links",
+      "description": "Short links and their click counts."
+    }
+  ],
+  "paths": {
+    "/api/links": {
+      "post": {
+        "operationId": "createLink",
+        "tags": ["links"],
+        "summary": "Create a short link",
+        "description": "With a `slug`, always creates a new link (a URL may have several slugs) and fails with `slug_taken` if the slug is used.\n\nWithout a `slug`, returns the **existing** link for the same URL with status `200`, or creates one with a generated 6-character slug and returns `201`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLinkRequest"
+              },
+              "examples": {
+                "generatedSlug": {
+                  "summary": "Let the server pick the slug",
+                  "value": {
+                    "url": "https://example.com/some/long/path"
+                  }
+                },
+                "customSlug": {
+                  "summary": "Custom slug and note",
+                  "value": {
+                    "url": "https://example.com/some/long/path",
+                    "slug": "hello",
+                    "note": "Chrome ext: Hired Hand"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A new link was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                },
+                "example": {
+                  "id": "0b5f3c1e-7d2a-4c1b-9a53-2f6a1c8e4d10",
+                  "slug": "hello",
+                  "short_url": "https://go.richardmcquiston.com/hello",
+                  "target_url": "https://example.com/some/long/path",
+                  "note": null,
+                  "created_at": "2026-10-20T12:00:00Z"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "No slug was sent and this URL already has a short link; the existing link is returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Link"
+                },
+                "example": {
+                  "id": "0b5f3c1e-7d2a-4c1b-9a53-2f6a1c8e4d10",
+                  "slug": "hello",
+                  "short_url": "https://go.richardmcquiston.com/hello",
+                  "target_url": "https://example.com/some/long/path",
+                  "note": null,
+                  "created_at": "2026-10-20T12:00:00Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/CreateBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/SlugTaken"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listLinks",
+        "tags": ["links"],
+        "summary": "List links",
+        "description": "Newest first, with click counts.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many links to return.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "How many links to skip.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of links. An offset past the end gives an empty `links` array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListLinksResponse"
+                },
+                "example": {
+                  "links": [
+                    {
+                      "id": "0b5f3c1e-7d2a-4c1b-9a53-2f6a1c8e4d10",
+                      "slug": "hello",
+                      "short_url": "https://go.richardmcquiston.com/hello",
+                      "target_url": "https://example.com/some/long/path",
+                      "note": null,
+                      "created_at": "2026-10-20T12:00:00Z",
+                      "total_clicks": 42,
+                      "clicks_7_days": 9,
+                      "clicks_30_days": 31
+                    }
+                  ],
+                  "limit": 50,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ListBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/links/{slug}": {
+      "get": {
+        "operationId": "getLink",
+        "tags": ["links"],
+        "summary": "Get one link",
+        "description": "Slugs are case-sensitive.",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "hello"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The link with its click counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkSummary"
+                },
+                "example": {
+                  "id": "0b5f3c1e-7d2a-4c1b-9a53-2f6a1c8e4d10",
+                  "slug": "hello",
+                  "short_url": "https://go.richardmcquiston.com/hello",
+                  "target_url": "https://example.com/some/long/path",
+                  "note": null,
+                  "created_at": "2026-10-20T12:00:00Z",
+                  "total_clicks": 42,
+                  "clicks_7_days": 9,
+                  "clicks_30_days": 31
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The server's `API_KEY`. Send it as `Authorization: Bearer <API_KEY>`."
+      }
+    },
+    "schemas": {
+      "Link": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "short_url",
+          "target_url",
+          "note",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "description": "Case-sensitive. The part after the domain in the short URL."
+          },
+          "short_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The public short URL, built from the server's BASE_URL."
+          },
+          "target_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048
+          },
+          "note": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "Optional label. `null` when none was given."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC."
+          }
+        },
+        "example": {
+          "id": "0b5f3c1e-7d2a-4c1b-9a53-2f6a1c8e4d10",
+          "slug": "hello",
+          "short_url": "https://go.richardmcquiston.com/hello",
+          "target_url": "https://example.com/some/long/path",
+          "note": null,
+          "created_at": "2026-10-20T12:00:00Z"
+        }
+      },
+      "LinkSummary": {
+        "description": "A link plus its click counts. Bots and link checkers are not counted. `clicks_7_days` and `clicks_30_days` cover whole UTC days: today plus the previous 6 or 29.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Link"
+          },
+          {
+            "type": "object",
+            "required": ["total_clicks", "clicks_7_days", "clicks_30_days"],
+            "properties": {
+              "total_clicks": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "clicks_7_days": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "clicks_30_days": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "CreateLinkRequest": {
+        "type": "object",
+        "required": ["url"],
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "http or https, with a host, no username or password, and not on the shortener's own host."
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "description": "Optional. 1 to 64 letters, digits, hyphens or underscores, case-sensitive. These are reserved: `admin`, `api`, `healthz`, `robots.txt`, `favicon.ico`, `static`. Leave it out (or empty) to get a generated 6-character slug."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional label, trimmed. Empty means none."
+          }
+        }
+      },
+      "ListLinksResponse": {
+        "type": "object",
+        "required": ["links", "limit", "offset"],
+        "properties": {
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkSummary"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "description": "The limit that was applied."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "The offset that was applied."
+          }
+        }
+      },
+      "ErrorCode": {
+        "type": "string",
+        "description": "Stable, machine-readable error code.\n\n- `unauthorized`: the API key is missing or wrong (401)\n- `invalid_request`: malformed JSON, wrong field type, unknown field, bad query parameter or note, or a body over 16 KB (400, 413)\n- `invalid_url`: the target URL breaks the rules (400)\n- `invalid_slug`: the custom slug breaks the rules (400)\n- `slug_reserved`: the slug is reserved (400)\n- `slug_taken`: another link uses the slug (409)\n- `not_found`: no such link or endpoint (404)\n- `rate_limited`: reserved; the API does not currently rate-limit\n- `internal_error`: something failed on the server; details are in the server log (500)",
+        "enum": [
+          "unauthorized",
+          "invalid_request",
+          "invalid_url",
+          "invalid_slug",
+          "slug_reserved",
+          "slug_taken",
+          "not_found",
+          "rate_limited",
+          "internal_error"
+        ]
+      },
+      "ErrorBody": {
+        "type": "object",
+        "required": ["error", "message"],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "type": "string",
+            "description": "A specific explanation for people. Do not match on it."
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "The `Authorization` header is missing, malformed, or the key is wrong.",
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string",
+              "const": "Bearer"
+            }
+          }
+        },
+        "x-error-codes": ["unauthorized"],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "unauthorized",
+              "message": "invalid API key"
+            }
+          }
+        }
+      },
+      "CreateBadRequest": {
+        "description": "The request broke a rule. `error` says which: `invalid_request` (body or note problem), `invalid_url`, `invalid_slug` or `slug_reserved`.",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_url",
+          "invalid_slug",
+          "slug_reserved"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "slug_reserved",
+              "message": "slug \"admin\" is reserved"
+            }
+          }
+        }
+      },
+      "ListBadRequest": {
+        "description": "`limit` or `offset` is not a whole number in range.",
+        "x-error-codes": ["invalid_request"],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "invalid_request",
+              "message": "query parameter \"limit\" must be between 1 and 200, got 0"
+            }
+          }
+        }
+      },
+      "SlugTaken": {
+        "description": "Another link already uses this slug.",
+        "x-error-codes": ["slug_taken"],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "slug_taken",
+              "message": "slug \"hello\" is already used by another link"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The request body is larger than 16 KB.",
+        "x-error-codes": ["invalid_request"],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "invalid_request",
+              "message": "request body is larger than the 16384 byte limit"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No link has this slug.",
+        "x-error-codes": ["not_found"],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "not_found",
+              "message": "no link with slug \"missing\" exists"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Something failed on the server. The message is deliberately generic; the detail is in the server log.",
+        "x-error-codes": ["internal_error"],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "error": "internal_error",
+              "message": "an internal error occurred; the details were written to the server log"
+            }
+          }
+        }
+      }
+    }
+  }
+}

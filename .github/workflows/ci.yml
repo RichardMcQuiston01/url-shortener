@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Format, vet and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt (must print nothing)
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race ./...
+
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build --tag shortlinks:ci .
+
+      - name: Start the container and wait for its health check
+        run: |
+          # Throw-away values for this test only; they protect nothing.
+          docker run --detach --name smoke --publish 18080:8080 --volume smoke-data:/data \
+            --env BASE_URL=https://go.example.com \
+            --env ADMIN_PASSWORD=ci-only-admin-password \
+            --env API_KEY=ci-only-api-key-0123456789abcdef0123456789 \
+            --env SESSION_SECRET=ci-only-session-secret-0123456789abcdef \
+            shortlinks:ci
+
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' smoke)"
+            echo "health: $status"
+            if [ "$status" = "healthy" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$status" != "healthy" ]; then
+            docker logs smoke
+            exit 1
+          fi
+
+      - name: Call the running container
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:18080/healthz
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/api/links)" = "401"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs smoke || true
+
+      - name: Clean up
+        if: always()
+        run: docker rm --force smoke || true

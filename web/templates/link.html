@@ -1,0 +1,81 @@
+{{define "content"}}
+{{with .Content.Detail}}
+<p><a href="/admin">&larr; All links</a></p>
+<h1>Stats for /{{.Slug}}</h1>
+
+<dl class="details">
+  <dt>Short URL</dt>
+  <dd class="break"><a href="{{shortURL .Slug}}">{{shortURL .Slug}}</a></dd>
+  <dt>Target</dt>
+  <dd class="break"><a href="{{.TargetURL}}" rel="noopener noreferrer">{{.TargetURL}}</a></dd>
+  {{with .Note}}<dt>Note</dt><dd>{{.}}</dd>{{end}}
+  <dt>Created</dt>
+  <dd>{{formatTime .CreatedAt}}</dd>
+</dl>
+
+<h2>Clicks</h2>
+<p class="hint">Bots and link checkers are not counted.</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col" class="number">All time</th>
+        <th scope="col" class="number">Last 7 days</th>
+        <th scope="col" class="number">Last 30 days</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="number">{{.TotalClicks}}</td>
+        <td class="number">{{.Clicks7Days}}</td>
+        <td class="number">{{.Clicks30Days}}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<h2>Clicks per day (last 30 days, UTC)</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Date</th>
+        <th scope="col" class="number">Clicks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Content.DailyNewestFirst}}
+      <tr>
+        <td>{{.Day}}</td>
+        <td class="number">{{.Clicks}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+<h2>Top referrers</h2>
+{{if .Content.Detail.TopReferrers}}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Referrer host</th>
+        <th scope="col" class="number">Clicks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Content.Detail.TopReferrers}}
+      <tr>
+        <td class="break">{{.Host}}</td>
+        <td class="number">{{.Clicks}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<p>No referrer data yet.</p>
+{{end}}
+{{end}}
