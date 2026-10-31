@@ -14,7 +14,10 @@ VS Code Marketplace pages, project sites, and so on). It replaces the idea of ru
   short URLs.
 - **Runs on:** a Hostinger VPS using Docker Compose, behind the Caddy reverse proxy that already
   serves other sites there (Caddy handles HTTPS).
-- **Status:** new project, nothing built yet. Build in the order under "Build order".
+- **Status:** built and on `main`: build order steps 1 to 6 (server, redirects, JSON API, click statistics,
+  admin UI, Docker/compose/CI/backups/README) and the OpenAPI spec (`openapi.json`). Remaining: step 7, deploying
+  to the VPS and verifying with real links (see README, "Deploy with Docker"). The "Build order" list below is kept
+  as the record of how it was built.
 
 ### Goals
 
