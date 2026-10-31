@@ -21,6 +21,8 @@ All notable changes are listed here. The format follows
   reverse-proxy network; `.env.example`.
 - GitHub Actions: format, vet and test, plus a Docker build and smoke test.
 - README with run, API, deploy, backup and restore instructions.
+- `openapi.json`: an OpenAPI 3.1 description of the JSON API for generating TypeScript types, kept in sync with
+  the code by a contract test.
 
 ### Fixed
 

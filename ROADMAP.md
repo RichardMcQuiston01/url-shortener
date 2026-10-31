@@ -235,17 +235,17 @@ Goal: a machine-readable description of the JSON API that the owner can drop
 into a TypeScript project. Starts only after Stages 1 to 7 are done, so the
 spec describes the API as shipped.
 
-| Task                                                                                              | Agent |
-| ------------------------------------------------------------------------------------------------- | ----- |
-| Write `openapi.json` (OpenAPI 3.1) at the repo root, JSON only, no YAML                           | Docs  |
-| Describe `POST /api/links` (201 created, 200 existing), `GET /api/links`, `GET /api/links/{slug}` | Docs  |
-| Bearer `Authorization` security scheme; `servers` entry driven by the production base URL         | Docs  |
-| Reusable schemas: `Link`, `LinkSummary`, `CreateLinkRequest`, `ErrorBody`                         | Docs  |
-| `ErrorBody.error` enum lists all eight stable codes; each response lists its possible codes       | Docs  |
-| Examples taken from CLAUDE.md (request, 201 body, error body)                                     | Docs  |
-| Contract test: spec paths, status codes and error-code enum match the `httpapi` package           | QA    |
-| Validate the spec with an OpenAPI linter in CI (dev tool only, no Go dependency)                  | QA    |
-| README section: generate TypeScript types with `openapi-typescript` and call the API              | Docs  |
+| Task                                                                                                | Agent |
+| --------------------------------------------------------------------------------------------------- | ----- |
+| Write `openapi.json` (OpenAPI 3.1) at the repo root, JSON only, no YAML                             | Docs  |
+| Describe `POST /api/links` (201 created, 200 existing), `GET /api/links`, `GET /api/links/{slug}`   | Docs  |
+| Bearer `Authorization` security scheme; `servers` entry driven by the production base URL           | Docs  |
+| Reusable schemas: `Link`, `LinkSummary`, `CreateLinkRequest`, `ErrorBody`                           | Docs  |
+| `ErrorBody.error` enum lists all eight stable codes; each response lists its possible codes         | Docs  |
+| Examples taken from CLAUDE.md (request, 201 body, error body)                                       | Docs  |
+| Contract test: spec paths, status codes and error-code enum match the `httpapi` package             | QA    |
+| Spec checked by the contract test (no new dependency); an external OpenAPI linter in CI is optional | QA    |
+| README section: generate TypeScript types with `openapi-typescript` and call the API                | Docs  |
 
 Notes:
 

@@ -88,6 +88,52 @@ What gets counted: one click per `GET` redirect. `HEAD` requests, unknown slugs 
 like a bot or link checker are not counted in the totals. Only the time of the click, the referrer _host_ and a bot flag
 are stored: no IP addresses and no user agents.
 
+### TypeScript client
+
+[`openapi.json`](./openapi.json) describes the JSON API (OpenAPI 3.1). Generate types from it with
+[openapi-typescript](https://openapi-ts.dev/):
+
+```bash
+npm install --save-dev openapi-typescript typescript
+npx openapi-typescript ./openapi.json -o ./src/shortlinks-api.d.ts
+```
+
+Then use the generated types with plain `fetch`:
+
+```ts
+import type { components } from './shortlinks-api';
+
+type ShortLink = components['schemas']['Link'];
+type ApiErrorBody = components['schemas']['ErrorBody'];
+
+const shortLinksBaseUrl: string = 'https://go.richardmcquiston.com';
+
+export async function createShortLink(
+  targetUrl: string,
+  slug?: string
+): Promise<ShortLink> {
+  const response: Response = await fetch(`${shortLinksBaseUrl}/api/links`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.SHORTLINKS_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ url: targetUrl, slug }),
+  });
+
+  if (!response.ok) {
+    const errorBody: ApiErrorBody = await response.json();
+    throw new Error(`${errorBody.error}: ${errorBody.message}`);
+  }
+  return (await response.json()) as ShortLink;
+}
+```
+
+Keep the API key on the server (for example in a Next.js route handler); never ship it to a browser. Match on
+`error` (a stable code such as `slug_taken`) and show `message` to people. The spec lists which codes each
+endpoint can return, and a Go test (`internal/httpapi/openapi_test.go`) fails if `openapi.json` and the real API
+ever disagree, so update both in the same pull request.
+
 [Back to Top](#table-of-contents)
 
 ## Configuration
