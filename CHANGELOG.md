@@ -5,6 +5,10 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Donations now point at Ko-fi instead of Stripe: the README badge and a new `.github/FUNDING.yml`. The Stripe QR image is removed.
+
 ### Added
 
 - Redirects: `GET /{slug}` answers `302`, unknown slugs get a short plain 404, `GET /` redirects to
